@@ -46,7 +46,7 @@ steps:
     inlineScript: |
 
       az vm run-command invoke \
-        --resource-group rg-container-project \
+        --resource-group devops-resrce \
         --name backend-vm \
         --command-id RunShellScript \
         --scripts "
