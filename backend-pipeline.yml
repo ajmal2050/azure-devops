@@ -82,7 +82,7 @@ steps:
             -e DB_HOST=postgres \
             -e DB_NAME=studentdb \
             -e DB_USER=postgres \
-            -e DB_PASSWORD='YOUR_DB_PASSWORD' \
+            -e DB_PASSWORD='mypassword' \
             -e REDIS_URL=redis://redis:6379 \
             -p 5000:5000 \
             acrcontainerproject123.azurecr.io/backend:$(Build.BuildId)
