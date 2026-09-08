@@ -1,0 +1,30 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - backend/*
+      - init.sql
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  imageTag: '$(Build.BuildId)'
+
+steps:
+
+- checkout: self
+
+- task: Docker@2
+  displayName: Build and Push Backend
+  inputs:
+    containerRegistry: 'ACR-Service-Connection'
+    repository: 'backend'
+    command: 'buildAndPush'
+    Dockerfile: 'backend/Dockerfile'
+    buildContext: 'backend'
+    tags: |
+      $(imageTag)
+      latest
