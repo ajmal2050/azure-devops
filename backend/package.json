@@ -1,0 +1,14 @@
+{
+  "name": "azure-student-backend",
+  "version": "1.0.0",
+  "description": "Sample Azure backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "redis": "^5.8.2"
+  }
+}
