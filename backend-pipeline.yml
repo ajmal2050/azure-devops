@@ -4,8 +4,7 @@ trigger:
       - main
   paths:
     include:
-      - backend/*
-      - init.sql
+      - backend/**
 
 pool:
   vmImage: ubuntu-latest
@@ -14,6 +13,10 @@ variables:
   imageTag: '$(Build.BuildId)'
 
 steps:
+
+# ==========================================
+# BUILD AND PUSH BACKEND IMAGE TO ACR
+# ==========================================
 
 - checkout: self
 
@@ -28,3 +31,75 @@ steps:
     tags: |
       $(imageTag)
       latest
+
+
+# ==========================================
+# DEPLOY BACKEND TO PRIVATE VM
+# ==========================================
+
+- task: AzureCLI@2
+  displayName: Deploy Backend to Private VM
+  inputs:
+    azureSubscription: 'Azure-Service-Connection'
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+
+      az vm run-command invoke \
+        --resource-group rg-container-project \
+        --name backend-vm \
+        --command-id RunShellScript \
+        --scripts "
+
+          set -e
+
+          echo 'Logging into Azure using VM managed identity...'
+
+          az login --identity
+
+          echo 'Logging into Azure Container Registry...'
+
+          az acr login --name acrcontainerproject123
+
+          echo 'Pulling new backend image...'
+
+          docker pull acrcontainerproject123.azurecr.io/backend:$(Build.BuildId)
+
+          echo 'Stopping old backend container...'
+
+          docker stop backend || true
+
+          echo 'Removing old backend container...'
+
+          docker rm backend || true
+
+          echo 'Starting new backend container...'
+
+          docker run -d \
+            --name backend \
+            --network app-net \
+            --restart unless-stopped \
+            -e DB_HOST=postgres \
+            -e DB_NAME=studentdb \
+            -e DB_USER=postgres \
+            -e DB_PASSWORD='YOUR_DB_PASSWORD' \
+            -e REDIS_URL=redis://redis:6379 \
+            -p 5000:5000 \
+            acrcontainerproject123.azurecr.io/backend:$(Build.BuildId)
+
+          echo 'Waiting for backend...'
+
+          sleep 10
+
+          echo 'Running containers:'
+
+          docker ps
+
+          echo 'Backend health check:'
+
+          curl http://localhost:5000/health
+
+          echo ''
+          echo 'Backend deployment completed successfully.'
+
+        "
