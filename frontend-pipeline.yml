@@ -1,0 +1,29 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - frontend/*
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  imageTag: '$(Build.BuildId)'
+
+steps:
+
+- checkout: self
+
+- task: Docker@2
+  displayName: Build and Push Frontend
+  inputs:
+    containerRegistry: 'ACR-Service-Connection'
+    repository: 'frontend'
+    command: 'buildAndPush'
+    Dockerfile: 'frontend/Dockerfile'
+    buildContext: 'frontend'
+    tags: |
+      $(imageTag)
+      latest
