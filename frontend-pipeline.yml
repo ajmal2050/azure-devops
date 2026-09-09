@@ -14,10 +14,14 @@ variables:
 
 steps:
 
+# ==========================================
+# BUILD AND PUSH FRONTEND IMAGE TO ACR
+# ==========================================
+
 - checkout: self
 
 - task: Docker@2
-  displayName: Build and Push Frontend
+  displayName: 'Build and Push Frontend'
   inputs:
     containerRegistry: 'ACR-Service-Connection'
     repository: 'frontend'
@@ -27,3 +31,60 @@ steps:
     tags: |
       $(imageTag)
       latest
+
+# ==========================================
+# DEPLOY FRONTEND TO PRIVATE VM
+# ==========================================
+
+- task: AzureCLI@2
+  displayName: 'Deploy Frontend to Private VM'
+  inputs:
+    azureSubscription: 'Azure-Service-Connection'
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+
+      az vm run-command invoke \
+        --resource-group devops-resrce \
+        --name backend-vm \
+        --command-id RunShellScript \
+        --scripts "
+
+          set -e
+
+          echo 'Logging into Azure using VM managed identity...'
+          az login --identity
+
+          echo 'Logging into Azure Container Registry...'
+          az acr login --name acrcontainerproject123
+
+          echo 'Pulling new frontend image...'
+          docker pull acrcontainerproject123.azurecr.io/frontend:$(Build.BuildId)
+
+          echo 'Stopping old frontend container...'
+          docker stop frontend || true
+
+          echo 'Removing old frontend container...'
+          docker rm frontend || true
+
+          echo 'Starting new frontend container...'
+          docker run -d \
+            --name frontend \
+            --network app-net \
+            --restart unless-stopped \
+            -p 80:80 \
+            acrcontainerproject123.azurecr.io/frontend:$(Build.BuildId)
+
+          echo 'Waiting for frontend...'
+          sleep 10
+
+          echo 'Running containers:'
+          docker ps
+
+          echo 'Frontend check:'
+          curl -I http://localhost:80 || true
+
+          echo ''
+          echo 'Frontend deployment completed successfully.'
+
+        "
