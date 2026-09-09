@@ -3,98 +3,114 @@ const { Pool } = require("pg");
 const { createClient } = require("redis");
 
 const app = express();
-
 app.use(express.json());
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
+// Database Configuration
 const pool = new Pool({
-    host: process.env.DB_HOST || "postgres",
-    port: 5432,
-    database: process.env.DB_NAME || "studentdb",
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "postgres"
+  host: process.env.DB_HOST || "postgres",
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || "DB-VAR",
+  user: process.env.DB_USER || "USER-VAR",
+  password: process.env.DB_PASSWORD || "DB-PASS",
 });
 
-const redisClient = createClient({
-    url: process.env.REDIS_URL || "redis://redis:6379"
-});
-
-redisClient.on("error", err => {
-    console.log("Redis error:", err);
-});
-
-async function startRedis() {
-
-    if (!redisClient.isOpen) {
-        await redisClient.connect();
-    }
-
+// Auto-create table if it doesn't exist
+async function initDb() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS students (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(100) NOT NULL,
+        course VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log("Database initialized: 'students' table ready.");
+  } catch (err) {
+    console.error("Database initialization error:", err);
+  }
 }
 
-app.get("/health", async (req, res) => {
+// Redis Configuration
+const redisClient = createClient({
+  url: process.env.REDIS_URL || "redis://redis:6379",
+});
 
-    res.json({
-        status: "healthy"
+redisClient.on("error", (err) => console.log("Redis error:", err));
+redisClient.on("connect", () => console.log("Connected to Redis"));
+
+// Initialize Redis and Start Server
+async function startServer() {
+  try {
+    await redisClient.connect();
+    await initDb();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Backend running on port ${PORT}`);
     });
+  } catch (err) {
+    console.error("Failed to start server:", err);
+  }
+}
 
+// Routes
+app.get("/health", async (req, res) => {
+  res.json({
+    status: "healthy",
+    database: "connected",
+    redis: redisClient.isOpen ? "connected" : "disconnected",
+  });
 });
 
 app.get("/students", async (req, res) => {
-
-    try {
-
-        const result = await pool.query(
-            "SELECT * FROM students ORDER BY id DESC"
-        );
-
-        res.json(result.rows);
-
-    } catch (error) {
-
-        console.error(error);
-
-        res.status(500).json({
-            error: "Database error"
-        });
-
+  try {
+    // Check Redis cache first
+    const cachedStudents = await redisClient.get("students");
+    if (cachedStudents) {
+      return res.json(JSON.parse(cachedStudents));
     }
 
+    // Query Postgres if cache miss
+    const result = await pool.query(
+      "SELECT * FROM students ORDER BY id DESC"
+    );
+
+    // Save result to Redis cache for 60 seconds
+    await redisClient.setEx("students", 60, JSON.stringify(result.rows));
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 app.post("/students", async (req, res) => {
+  try {
+    const { name, email, course } = req.body;
 
-    try {
-
-        const { name, email, course } = req.body;
-
-        await pool.query(
-            "INSERT INTO students (name, email, course) VALUES ($1, $2, $3)",
-            [name, email, course]
-        );
-
-        await startRedis();
-
-        await redisClient.del("students");
-
-        res.json({
-            message: "Student added successfully"
-        });
-
-    } catch (error) {
-
-        console.error(error);
-
-        res.status(500).json({
-            error: "Failed to add student"
-        });
-
+    if (!name || !email || !course) {
+      return res.status(400).json({ error: "Name, email, and course are required" });
     }
 
+    await pool.query(
+      "INSERT INTO students (name, email, course) VALUES ($1, $2, $3)",
+      [name, email, course]
+    );
+
+    // Invalidate Redis cache
+    if (redisClient.isOpen) {
+      await redisClient.del("students");
+    }
+
+    res.status(201).json({ message: "Student added successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to add student" });
+  }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-
-    console.log(`Backend running on port ${PORT}`);
-
-});
+startServer();
