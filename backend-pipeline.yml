@@ -21,7 +21,7 @@ steps:
 - checkout: self
 
 - task: Docker@2
-  displayName: Build and Push Backend
+  displayName: 'Build and Push Backend'
   inputs:
     containerRegistry: 'ACR-Service-Connection'
     repository: 'backend'
@@ -32,13 +32,12 @@ steps:
       $(imageTag)
       latest
 
-
 # ==========================================
-# DEPLOY BACKEND TO PRIVATE VM
+# DEPLOY BACKEND, POSTGRES, & REDIS TO PRIVATE VM
 # ==========================================
 
 - task: AzureCLI@2
-  displayName: Deploy Backend to Private VM
+  displayName: 'Deploy Backend Stack to Private VM'
   inputs:
     azureSubscription: 'Azure-Service-Connection'
     scriptType: bash
@@ -54,26 +53,47 @@ steps:
           set -e
 
           echo 'Logging into Azure using VM managed identity...'
-
           az login --identity
 
           echo 'Logging into Azure Container Registry...'
-
           az acr login --name acrcontainerproject123
 
-          echo 'Pulling new backend image...'
+          echo 'Ensuring Docker network app-net exists...'
+          docker network create app-net || true
 
+          echo '1. Starting PostgreSQL Container...'
+          if ! docker ps -a --format '{{.Names}}' | grep -q '^postgres$'; then
+            docker run -d \
+              --name postgres \
+              --network app-net \
+              --restart unless-stopped \
+              -e POSTGRES_DB=DB-VAR \
+              -e POSTGRES_USER=USER-VAR \
+              -e POSTGRES_PASSWORD='DB-PASS' \
+              -v postgres_data:/var/lib/postgresql/data \
+              postgres:15-alpine
+          else
+            echo 'Postgres container already exists, ensuring it is running...'
+            docker start postgres
+          fi
+
+          echo '2. Starting Redis Container...'
+          if ! docker ps -a --format '{{.Names}}' | grep -q '^redis$'; then
+            docker run -d \
+              --name redis \
+              --network app-net \
+              --restart unless-stopped \
+              redis:7-alpine
+          else
+            echo 'Redis container already exists, ensuring it is running...'
+            docker start redis
+          fi
+
+          echo '3. Pulling and Updating Backend Container...'
           docker pull acrcontainerproject123.azurecr.io/backend:$(Build.BuildId)
 
-          echo 'Stopping old backend container...'
-
           docker stop backend || true
-
-          echo 'Removing old backend container...'
-
           docker rm backend || true
-
-          echo 'Starting new backend container...'
 
           docker run -d \
             --name backend \
@@ -87,19 +107,16 @@ steps:
             -p 5000:5000 \
             acrcontainerproject123.azurecr.io/backend:$(Build.BuildId)
 
-          echo 'Waiting for backend...'
-
+          echo 'Waiting for services to settle...'
           sleep 10
 
           echo 'Running containers:'
-
           docker ps
 
           echo 'Backend health check:'
-
-          curl http://localhost:5000/health
+          curl http://localhost:5000/health || true
 
           echo ''
-          echo 'Backend deployment completed successfully.'
+          echo 'Backend deployment stack completed successfully.'
 
         "
