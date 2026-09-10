@@ -56,7 +56,19 @@ async function startServer() {
   }
 }
 
-// Routes
+// ------------------- ROUTES -------------------
+
+// Root Route (Fixed Cannot GET /)
+app.get("/", (req, res) => {
+  res.json({ message: "Backend API running successfully!" });
+});
+
+// Base API Route (Fixed Cannot GET /api/)
+app.get(["/api", "/api/"], (req, res) => {
+  res.json({ message: "API endpoint accessible", status: "ok" });
+});
+
+// Health Probe Route (For Application Gateway Probe)
 app.get("/health", async (req, res) => {
   res.json({
     status: "healthy",
@@ -65,7 +77,8 @@ app.get("/health", async (req, res) => {
   });
 });
 
-app.get("/students", async (req, res) => {
+// Students Route (Handles /students and /api/students)
+app.get(["/students", "/api/students"], async (req, res) => {
   try {
     // Check Redis cache first
     const cachedStudents = await redisClient.get("students");
@@ -88,7 +101,8 @@ app.get("/students", async (req, res) => {
   }
 });
 
-app.post("/students", async (req, res) => {
+// Add Student Route (Handles /students and /api/students)
+app.post(["/students", "/api/students"], async (req, res) => {
   try {
     const { name, email, course } = req.body;
 
