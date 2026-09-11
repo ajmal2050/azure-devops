@@ -58,17 +58,17 @@ async function startServer() {
 
 // ------------------- ROUTES -------------------
 
-// Root Route (Fixed Cannot GET /)
+// Root Route
 app.get("/", (req, res) => {
   res.json({ message: "Backend API running successfully!" });
 });
 
-// Base API Route (Fixed Cannot GET /api/)
+// Base API Route
 app.get(["/api", "/api/"], (req, res) => {
   res.json({ message: "API endpoint accessible", status: "ok" });
 });
 
-// Health Probe Route (For Application Gateway Probe)
+// Health Probe Route
 app.get("/health", async (req, res) => {
   res.json({
     status: "healthy",
@@ -77,31 +77,37 @@ app.get("/health", async (req, res) => {
   });
 });
 
-// Students Route (Handles /students and /api/students)
+// Students Route (Returns source indicator: cache vs database)
 app.get(["/students", "/api/students"], async (req, res) => {
   try {
-    // Check Redis cache first
+    // 1. Check Redis cache first
     const cachedStudents = await redisClient.get("students");
     if (cachedStudents) {
-      return res.json(JSON.parse(cachedStudents));
+      return res.json({
+        source: "cache",
+        data: JSON.parse(cachedStudents),
+      });
     }
 
-    // Query Postgres if cache miss
+    // 2. Query Postgres if cache miss
     const result = await pool.query(
       "SELECT * FROM students ORDER BY id DESC"
     );
 
-    // Save result to Redis cache for 60 seconds
+    // 3. Save result to Redis cache for 60 seconds
     await redisClient.setEx("students", 60, JSON.stringify(result.rows));
 
-    res.json(result.rows);
+    return res.json({
+      source: "database",
+      data: result.rows,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Database error" });
   }
 });
 
-// Add Student Route (Handles /students and /api/students)
+// Add Student Route
 app.post(["/students", "/api/students"], async (req, res) => {
   try {
     const { name, email, course } = req.body;
@@ -115,7 +121,7 @@ app.post(["/students", "/api/students"], async (req, res) => {
       [name, email, course]
     );
 
-    // Invalidate Redis cache
+    // Invalidate Redis cache on new insert
     if (redisClient.isOpen) {
       await redisClient.del("students");
     }
