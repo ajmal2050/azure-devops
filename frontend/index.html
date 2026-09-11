@@ -90,10 +90,10 @@
 
             // Update badge text and color depending on response source
             if (result.source === "cache") {
-                badge.textContent = "⚡ Loaded from Redis Cache";
+                badge.textContent = " Loaded from Redis Cache";
                 badge.className = "badge cache";
             } else {
-                badge.textContent = "🗄️ Loaded from PostgreSQL Database";
+                badge.textContent = " Loaded from PostgreSQL Database";
                 badge.className = "badge database";
             }
 
