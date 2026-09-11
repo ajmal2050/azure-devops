@@ -2,6 +2,23 @@
 <html>
 <head>
     <title>Azure Student App</title>
+    <style>
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            color: white;
+            margin-left: 10px;
+        }
+        .cache {
+            background-color: #28a745; /* Green for Redis */
+        }
+        .database {
+            background-color: #007bff; /* Blue for Database */
+        }
+    </style>
 </head>
 
 <body>
@@ -9,7 +26,6 @@
     <h1>Student Management Application</h1>
 
     <form id="studentForm">
-
         <label>Name:</label>
         <input type="text" id="name" required>
         <br><br>
@@ -23,19 +39,19 @@
         <br><br>
 
         <button type="submit">Submit</button>
-
     </form>
 
-    <h2>Students</h2>
+    <h2>
+        Students 
+        <span id="cacheStatus" class="badge"></span>
+    </h2>
 
     <div id="students"></div>
 
     <script>
-
         const API_URL = "/api";
 
         document.getElementById("studentForm").addEventListener("submit", async function(e) {
-
             e.preventDefault();
 
             const name = document.getElementById("name").value;
@@ -58,20 +74,34 @@
 
             alert(data.message || "Student added");
 
-            loadStudents();
+            // Reset form fields
+            document.getElementById("name").value = "";
+            document.getElementById("email").value = "";
+            document.getElementById("course").value = "";
 
+            loadStudents();
         });
 
         async function loadStudents() {
-
             const response = await fetch(API_URL + "/students");
+            const result = await response.json();
 
-            const students = await response.json();
+            const badge = document.getElementById("cacheStatus");
 
+            // Update badge text and color depending on response source
+            if (result.source === "cache") {
+                badge.textContent = "⚡ Loaded from Redis Cache";
+                badge.className = "badge cache";
+            } else {
+                badge.textContent = "🗄️ Loaded from PostgreSQL Database";
+                badge.className = "badge database";
+            }
+
+            // Render students list
             document.getElementById("students").innerHTML =
-                students.map(student => `
+                result.data.map(student => `
                     <p>
-                        ${student.name} -
+                        <strong>${student.name}</strong> -
                         ${student.email} -
                         ${student.course}
                     </p>
@@ -79,7 +109,6 @@
         }
 
         loadStudents();
-
     </script>
 
 </body>
